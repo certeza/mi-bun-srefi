@@ -1,14 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+// firebase.ts
 import { initializeApp } from 'firebase/app';
-import {
-  getFirestore, collection, addDoc, getDocs, deleteDoc, doc
-} from 'firebase/firestore';
-import {
-  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut
-} from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,8 +16,54 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+export { db, auth };
+
+// hooks/useAuth.ts
+import { useEffect, useState } from 'react';
+import { auth } from '../firebase';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  User
+} from 'firebase/auth';
+
+export function useAuth() {
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  const login = (email: string, password: string) =>
+    signInWithEmailAndPassword(auth, email, password);
+
+  const register = (email: string, password: string) =>
+    createUserWithEmailAndPassword(auth, email, password);
+
+  const logout = () => signOut(auth);
+
+  return {
+    user,
+    login,
+    register,
+    logout,
+  };
+}
+
+// gebruik in component
+import { useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { db } from './firebase';
+import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { useAuth } from './hooks/useAuth';
+
 export default function Home() {
-  const [user, setUser] = useState(null);
+  const { user, login, register, logout } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -32,28 +71,6 @@ export default function Home() {
   const [opportunities, setOpportunities] = useState<string[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [filterTalent, setFilterTalent] = useState('');
-
-  useEffect(() => {
-    onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-  }, []);
-
-  const login = () => {
-    signInWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => setUser(userCredential.user))
-      .catch((error) => alert("Login mislukt: " + error.message));
-  };
-
-  const register = () => {
-    createUserWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => setUser(userCredential.user))
-      .catch((error) => alert("Registratie mislukt: " + error.message));
-  };
-
-  const logout = () => {
-    signOut(auth);
-  };
 
   const suggestOpportunities = async () => {
     const suggestions = {
@@ -113,8 +130,8 @@ export default function Home() {
             <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Input placeholder="Wachtwoord" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             <div className="flex space-x-2">
-              <Button onClick={login}>Inloggen</Button>
-              <Button onClick={register} variant="outline">Registreren</Button>
+              <Button onClick={() => login(email, password)}>Inloggen</Button>
+              <Button onClick={() => register(email, password)} variant="outline">Registreren</Button>
             </div>
           </CardContent>
         </Card>
@@ -159,3 +176,4 @@ export default function Home() {
     </div>
   );
 }
+
