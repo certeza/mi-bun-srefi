@@ -1,3 +1,4 @@
+// tailwind.config.js
 module.exports = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx}",
@@ -7,12 +8,4 @@ module.exports = {
     extend: {},
   },
   plugins: [],
-};
-
-// postcss.config.js
-module.exports = {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
 };
