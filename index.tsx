@@ -1,0 +1,161 @@
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { initializeApp } from 'firebase/app';
+import {
+  getFirestore, collection, addDoc, getDocs, deleteDoc, doc
+} from 'firebase/firestore';
+import {
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut
+} from 'firebase/auth';
+
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+export default function Home() {
+  const [user, setUser] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [talent, setTalent] = useState('');
+  const [opportunities, setOpportunities] = useState<string[]>([]);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [filterTalent, setFilterTalent] = useState('');
+
+  useEffect(() => {
+    onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+  }, []);
+
+  const login = () => {
+    signInWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => setUser(userCredential.user))
+      .catch((error) => alert("Login mislukt: " + error.message));
+  };
+
+  const register = () => {
+    createUserWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => setUser(userCredential.user))
+      .catch((error) => alert("Registratie mislukt: " + error.message));
+  };
+
+  const logout = () => {
+    signOut(auth);
+  };
+
+  const suggestOpportunities = async () => {
+    const suggestions = {
+      "planten": ["Help op een plantage", "Verzorg kruidentuin", "Leer plantverzorging"],
+      "koken": ["Kook mee in buurtcentrum", "Start je eigen catering", "Vrijwillige kookhulp"],
+      "helpen": ["Help ouderen in de wijk", "Doe mee aan buurtproject", "Ondersteun op een zorgboerderij"]
+    };
+
+    const matched = suggestions[talent.toLowerCase()] || ["Geen suggesties gevonden. Probeer iets anders."];
+    setOpportunities(matched);
+
+    try {
+      await addDoc(collection(db, "submissions"), {
+        name,
+        talent,
+        suggestions: matched,
+        timestamp: new Date()
+      });
+      fetchSubmissions();
+    } catch (e) {
+      console.error("Error saving data: ", e);
+    }
+  };
+
+  const fetchSubmissions = async () => {
+    const querySnapshot = await getDocs(collection(db, "submissions"));
+    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setSubmissions(data);
+  };
+
+  const deleteSubmission = async (id: string) => {
+    await deleteDoc(doc(db, "submissions", id));
+    fetchSubmissions();
+  };
+
+  const exportToCSV = () => {
+    const header = "Naam,Talent,Suggesties\n";
+    const rows = submissions.map((s) => `${s.name},${s.talent},"${s.suggestions?.join('; ')}"`).join("\n");
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'inzendingen.csv';
+    link.click();
+  };
+
+  const filteredSubmissions = filterTalent
+    ? submissions.filter((s) => s.talent.toLowerCase().includes(filterTalent.toLowerCase()))
+    : submissions;
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 space-y-6">
+      {!user ? (
+        <Card>
+          <CardContent className="space-y-4">
+            <h2 className="text-lg font-semibold">Admin login / registratie</h2>
+            <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input placeholder="Wachtwoord" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div className="flex space-x-2">
+              <Button onClick={login}>Inloggen</Button>
+              <Button onClick={register} variant="outline">Registreren</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Button variant="outline" onClick={logout}>Uitloggen</Button>
+
+          <Card>
+            <CardContent className="space-y-4">
+              <h1 className="text-xl font-bold">Mi Bun Srefi</h1>
+              <p className="text-gray-600">Ontdek je talent en zie wat je kunt doen in je buurt.</p>
+              <Input placeholder="Je naam" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input placeholder="Waar ben je goed in? (bijv. koken, planten, helpen)" value={talent} onChange={(e) => setTalent(e.target.value)} />
+              <Button onClick={suggestOpportunities}>Toon suggesties</Button>
+              <div className="space-y-2">
+                {opportunities.map((item, idx) => (
+                  <div key={idx} className="p-2 bg-gray-100 rounded-xl shadow">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-4">
+              <h2 className="text-lg font-semibold">Admin: Inzendingen beheren</h2>
+              <Input placeholder="Filter op talent (bijv. planten)" value={filterTalent} onChange={(e) => setFilterTalent(e.target.value)} />
+              <Button onClick={exportToCSV}>Exporteer naar CSV</Button>
+              {filteredSubmissions.map((entry) => (
+                <div key={entry.id} className="p-3 border rounded-lg space-y-1 bg-gray-50">
+                  <p><strong>Naam:</strong> {entry.name}</p>
+                  <p><strong>Talent:</strong> {entry.talent}</p>
+                  <p><strong>Suggesties:</strong> {entry.suggestions?.join(", ")}</p>
+                  <Button variant="destructive" size="sm" onClick={() => deleteSubmission(entry.id)}>Verwijder</Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
